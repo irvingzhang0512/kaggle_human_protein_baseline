@@ -59,23 +59,20 @@ class HumanDataset(Dataset):
             y = np.array(Image.open(filename + "_yellow.png"))
             images[:, :, 3] = y.astype(np.uint8)
         images = images.astype(np.uint8)  # [0, 255]
-        # images = images.astype(np.float32)/255.0  # [0, 1]
         if config.img_height == 512:
             return images
         else:
             return cv2.resize(images, (config.img_weight, config.img_height))
 
     def augumentor(self, image):
-        augment_img = iaa.Sequential([
-            iaa.OneOf([
-                iaa.Affine(rotate=90),
-                iaa.Affine(rotate=180),
-                iaa.Affine(rotate=270),
-                iaa.Affine(shear=(-16, 16)),
-                iaa.Fliplr(0.5),
-                iaa.Flipud(0.5),
-
-            ])], random_order=True)
+        augment_img = iaa.SomeOf((0, 6), [
+            iaa.Affine(rotate=90),
+            iaa.Affine(rotate=180),
+            iaa.Affine(rotate=270),
+            iaa.Affine(shear=(-16, 16)),
+            iaa.Fliplr(0.5),
+            iaa.Flipud(0.5),
+        ], random_order=True)
 
         image_aug = augment_img.augment_image(image)
         return image_aug

@@ -28,27 +28,32 @@ torch.cuda.manual_seed_all(2050)
 
 # set gpu settings
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 torch.backends.cudnn.benchmark = True
+
+# other settings
 warnings.filterwarnings('ignore')
-
-# 日志管理
-log = Logger()
-if not os.path.exists(config.logs_dir):
-    os.mkdir(config.logs_dir)
-log.open(os.path.join(config.logs_dir, "%s_log_train.txt" % config.model_name), mode="a")
-log.write("\n---------------------------- [START %s] %s\n\n" % (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), '-' * 20))
-
-log.write(
-    '----------------------|--------- Train ---------|-------- Valid ---------|-------Best Results-------|----------|\n')
-log.write(
-    'mode   iter   epoch   |      loss   f1_macro    |      loss   f1_macro   |       loss   f1_macro    | time     |\n')
-log.write(
-    '--------------------------------------------------------------------------------------------------------------\n')
 logging_pattern = '%s %5.1f %6.1f    |      %.3f  %.3f       |      %.3f  %.4f      |       %s  %s        | %s'
 
-thresholds = 0.15
+# # 0.6717
+# thresholds = 0.15
 
+# # 0.6870
+# thresholds = 0.2
+
+# 0.7096
+thresholds = 0.4
+
+# # 0.6646
+# thresholds = np.array([0.407, 0.441, 0.161, 0.145, 0.299, 0.129, 0.25, 0.414, 0.01, 0.028, 0.021, 0.125,
+#                        0.113, 0.387, 0.602, 0.001, 0.137, 0.199, 0.176, 0.25, 0.095, 0.29, 0.159, 0.255,
+#                        0.231, 0.363, 0.117, 0., ])
+
+
+# # 0.7038
+# thresholds = np.array([0.5, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.2, 0.2, 0.2, 0.4,
+#                        0.4, 0.4, 0.4, 0.2, 0.4, 0.4, 0.4, 0.4, 0.2, 0.4, 0.4, 0.4,
+#                        0.4, 0.4, 0.4, 0.2, ])
 
 def train(train_loader, model, criterion, optimizer, epoch, valid_loss, best_results, start):
     losses = AverageMeter()
@@ -127,13 +132,26 @@ def test(test_loader, model, folds):
 
 
 def training(model, fold, args):
+    # logging issues
+    log = Logger()
+    log.open(os.path.join(config.logs_dir, "%s_log_train.txt" % config.model_name), mode="a")
+    log.write(
+        "\n---------------------------- [START %s] %s\n\n" % (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), '-' * 20))
+
+    log.write(
+        '----------------------|--------- Train ---------|-------- Valid ---------|-------Best Results-------|----------|\n')
+    log.write(
+        'mode   iter   epoch   |      loss   f1_macro    |      loss   f1_macro   |       loss   f1_macro    | time     |\n')
+    log.write(
+        '--------------------------------------------------------------------------------------------------------------\n')
+
     # training params
     optimizer = optim.SGD(model.parameters(),
                           lr=config.learning_rate_start,
                           momentum=0.9,
                           weight_decay=config.weight_decay)
-    criterion = nn.BCEWithLogitsLoss().cuda()
-    # criterion = FocalLoss().cuda()
+    # criterion = nn.BCEWithLogitsLoss().cuda()
+    criterion = FocalLoss().cuda()
     # criterion = F1Loss().cuda()
     best_results = [np.inf, 0]
     val_metrics = [np.inf, 0]
@@ -191,6 +209,7 @@ def training(model, fold, args):
 
 
 def testing(model, fold, args):
+    print('start testing')
     # load dataset
     test_files = pd.read_csv(config.test_csv)
     test_gen = HumanDataset(test_files, config.test_dir, augument=False, mode="test")
@@ -202,6 +221,30 @@ def testing(model, fold, args):
     # best_model = torch.load("checkpoints/bninception_bcelog/0/checkpoint.pth.tar")
     model.load_state_dict(best_model["state_dict"])
     test(test_loader, model, fold)
+
+
+def evaluating(model, fold, args):
+    # load model
+    best_model = torch.load(
+        "%s/%s_fold_%s_model_best_loss.pth.tar" % (config.best_models, config.model_name, str(fold)))
+    model.load_state_dict(best_model["state_dict"])
+
+    all_files = pd.read_csv(config.train_csv)
+    all_gen = HumanDataset(all_files, config.train_dir, augument=False)
+    all_loader = DataLoader(all_gen, 1, shuffle=False, pin_memory=True, num_workers=4)
+
+    losses = AverageMeter()
+    f1 = F1Meter()
+    model.cuda()
+    model.eval()
+    with torch.no_grad():
+        for i, (images, target) in enumerate(tqdm(all_loader)):
+            images_var = images.cuda(non_blocking=True)
+            target = torch.from_numpy(np.array(target)).float().cuda(non_blocking=True)
+            output = model(images_var)
+            # f1.update(output.sigmoid().cpu() > thresholds, target)
+            f1.update(output.sigmoid().cpu() > torch.from_numpy(thresholds).float(), target)
+        print('final loss: %.4f\nfinal f1: %.4f\n' % (losses.avg, f1.f1))
 
 
 def main(args):
@@ -225,6 +268,8 @@ def main(args):
         training(model, args.fold, args)
     elif args.mode == 'test':
         testing(model, args.fold, args)
+    elif args.mode == 'evaluate':
+        evaluating(model, args.fold, args)
     else:
         raise ValueError('Unknown Mode {}'.format(args.mode))
 

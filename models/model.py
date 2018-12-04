@@ -3,19 +3,28 @@ from torch import nn
 from config import config
 
 
-# def get_net():
-#     model = bninception(pretrained="imagenet")
-#     model.global_pool = nn.AdaptiveAvgPool2d(1)
-#     model.conv1_7x7_s2 = nn.Conv2d(config.channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3))
-#     model.last_linear = nn.Sequential(
-#                 nn.BatchNorm1d(1024),
-#                 nn.Dropout(0.5),
-#                 nn.Linear(1024, config.num_classes),
-#             )
-#     return model
-
-
 def get_net():
+    if config.model_name == 'bninception_bcelog':
+        return get_bninception()
+    elif config.model_name == 'inceptionresnetv2':
+        return get_inception_resnet_v2()
+    else:
+        raise ValueError('Unknown Model Name %s' % config.model_name)
+
+
+def get_bninception():
+    model = bninception(pretrained="imagenet")
+    model.global_pool = nn.AdaptiveAvgPool2d(1)
+    model.conv1_7x7_s2 = nn.Conv2d(config.channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3))
+    model.last_linear = nn.Sequential(
+        nn.BatchNorm1d(1024),
+        nn.Dropout(0.5),
+        nn.Linear(1024, config.num_classes),
+    )
+    return model
+
+
+def get_inception_resnet_v2():
     class BasicConv2d(nn.Module):
 
         def __init__(self, in_planes, out_planes, kernel_size, stride, padding=0):

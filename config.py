@@ -2,18 +2,19 @@ import os
 
 
 class DefaultConfigs(object):
-    base_data_dir = '/ssd/zhangyiyang/protein/'
+    # base_data_dir = '/ssd/zhangyiyang/protein/'
+    base_data_dir = '/home/tensorflow05/data/kaggle/protein/'
     train_dir = os.path.join(base_data_dir, 'train')
     test_dir = os.path.join(base_data_dir, 'test')
     train_csv = os.path.join(base_data_dir, 'train.csv')
     test_csv = os.path.join(base_data_dir, 'sample_submission.csv')
 
-    logs_dir = "./logs"
+    logs_dir = "./logs-f1"
     weights = os.path.join(logs_dir, 'checkpoints')
     best_models = os.path.join(weights, 'best_models')
     submit = os.path.join(logs_dir, 'submit')
-    # model_name = "bninception_bcelog"
-    model_name = "inceptionresnetv2"
+    model_name = "bninception_bcelog"
+    # model_name = "inceptionresnetv2"
 
     # basic config
     num_classes = 28
