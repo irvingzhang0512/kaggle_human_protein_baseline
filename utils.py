@@ -113,6 +113,25 @@ class FocalLoss(nn.Module):
         return F.binary_cross_entropy_with_logits(x, t, w, size_average=False)
 
 
+class F1Loss(nn.Module):
+    def __init__(self, beta=1, small_value=1e-6):
+        super(F1Loss, self).__init__()
+        self.small_value = small_value
+        self.beta = beta
+
+    def forward(self, x, y):
+        batch_size = x.size()[0]
+        p = F.sigmoid(x)
+        num_pos = torch.sum(p, 1) + self.small_value
+        num_pos_hat = torch.sum(y, 1) + self.small_value
+        tp = torch.sum(y * p, 1)
+        precise = tp / num_pos
+        recall = tp / num_pos_hat
+        fs = (1 + self.beta * self.beta) * precise * recall / (self.beta * self.beta * precise + recall + self.small_value)
+        loss = fs.sum() / batch_size
+        return 1 - loss
+
+
 def get_learning_rate(optimizer):
     lr = []
     for param_group in optimizer.param_groups:

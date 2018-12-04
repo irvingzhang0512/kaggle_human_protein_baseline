@@ -9,7 +9,7 @@ import sys
 import argparse
 
 from config import config
-from utils import save_checkpoint, AverageMeter, Logger, FocalLoss, get_learning_rate, time_to_str, F1Meter
+from utils import save_checkpoint, AverageMeter, Logger, FocalLoss, get_learning_rate, time_to_str, F1Meter, F1Loss
 from data import HumanDataset
 from tqdm import tqdm
 from datetime import datetime
@@ -80,7 +80,6 @@ def train(train_loader, model, criterion, optimizer, epoch, valid_loss, best_res
                 str(best_results[0])[:8], str(best_results[1])[:8],
                 time_to_str((timer() - start), 'min'))
             print(message, end='\n', flush=True)
-    log.write("\n")
     return [losses.avg, f1.f1]
 
 
@@ -106,7 +105,6 @@ def evaluate(val_loader, model, criterion, epoch, train_loss, best_results, star
                     str(best_results[0])[:8], str(best_results[1])[:8],
                     time_to_str((timer() - start), 'min'))
                 print(message, end='\n', flush=True)
-        log.write("\n")
 
     return [losses.avg, f1.f1]
 
@@ -139,11 +137,14 @@ def training(model, fold, args):
         "\n---------------------------- [START %s] %s\n\n" % (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), '-' * 20))
 
     log.write(
-        '----------------------|--------- Train ---------|-------- Valid ---------|-------Best Results-------|----------|\n')
+        '----------------------|--------- Train ---------|-------- Valid ---------|-------Best '
+        'Results-------|----------|\n')
     log.write(
-        'mode   iter   epoch   |      loss   f1_macro    |      loss   f1_macro   |       loss   f1_macro    | time     |\n')
+        'mode   iter   epoch   |      loss   f1_macro    |      loss   f1_macro   |       loss   f1_macro    | time   '
+        '  |\n')
     log.write(
-        '--------------------------------------------------------------------------------------------------------------\n')
+        '----------------------------------------------------------------------------------------------------------'
+        '----\n')
 
     # training params
     optimizer = optim.SGD(model.parameters(),
@@ -151,8 +152,8 @@ def training(model, fold, args):
                           momentum=0.9,
                           weight_decay=config.weight_decay)
     # criterion = nn.BCEWithLogitsLoss().cuda()
-    criterion = FocalLoss().cuda()
-    # criterion = F1Loss().cuda()
+    # criterion = FocalLoss().cuda()
+    criterion = F1Loss().cuda()
     best_results = [np.inf, 0]
     val_metrics = [np.inf, 0]
     scheduler = lr_scheduler.StepLR(optimizer,
