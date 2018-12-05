@@ -12,14 +12,14 @@ from torch.autograd import Variable
 
 # save best model
 def save_checkpoint(state, is_best_loss, is_best_f1, fold):
-    filename = config.weights + config.model_name + os.sep + str(fold) + os.sep + "checkpoint.pth.tar"
+    filename = os.path.join(config.weights, config.model_name, str(fold), "checkpoint.pth.tar")
     torch.save(state, filename)
     if is_best_loss:
-        shutil.copyfile(filename,
-                        "%s/%s_fold_%s_model_best_loss.pth.tar" % (config.best_models, config.model_name, str(fold)))
+        shutil.copyfile(filename, os.path.join(config.best_models,
+                                               "%s_fold_%s_model_best_loss.pth.tar" % (config.model_name, str(fold))))
     if is_best_f1:
-        shutil.copyfile(filename,
-                        "%s/%s_fold_%s_model_best_f1.pth.tar" % (config.best_models, config.model_name, str(fold)))
+        shutil.copyfile(filename, os.path.join(config.best_models,
+                                               "%s_fold_%s_model_best_f1.pth.tar" % (config.model_name, str(fold))))
 
 
 class F1Meter(object):

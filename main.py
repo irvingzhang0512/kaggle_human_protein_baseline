@@ -28,7 +28,7 @@ torch.cuda.manual_seed_all(2050)
 
 # set gpu settings
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = config.gpu_id
 torch.backends.cudnn.benchmark = True
 
 # other settings
@@ -130,6 +130,12 @@ def test(test_loader, model, folds):
 
 
 def training(model, fold, args):
+    # resore from last checkpoint
+    # all model weights resored, but not learning rate.
+    if os.path.exists(os.path.join(config.weights, config.model_name, str(fold), "checkpoint.pth.tar")):
+        best_model = torch.load(os.path.join(config.weights, config.model_name, str(fold), "checkpoint.pth.tar"))
+        model.load_state_dict(best_model["state_dict"])
+
     # logging issues
     log = Logger()
     log.open(os.path.join(config.logs_dir, "%s_log_train.txt" % config.model_name), mode="a")
@@ -151,9 +157,14 @@ def training(model, fold, args):
                           lr=config.learning_rate_start,
                           momentum=0.9,
                           weight_decay=config.weight_decay)
-    # criterion = nn.BCEWithLogitsLoss().cuda()
-    # criterion = FocalLoss().cuda()
-    criterion = F1Loss().cuda()
+    if config.loss_name == 'ce':
+        criterion = nn.BCEWithLogitsLoss().cuda()
+    elif config.loss_name == 'focal':
+        criterion = FocalLoss().cuda()
+    elif config.loss_name == 'f1':
+        criterion = F1Loss().cuda()
+    else:
+        raise ValueError('unknown loss name {}'.format(config.loss_name))
     best_results = [np.inf, 0]
     val_metrics = [np.inf, 0]
     scheduler = lr_scheduler.StepLR(optimizer,
@@ -256,8 +267,8 @@ def main(args):
         os.mkdir(config.weights)
     if not os.path.exists(config.submit):
         os.makedirs(config.submit)
-    if not os.path.exists(config.weights + config.model_name + os.sep + str(args.fold)):
-        os.makedirs(config.weights + config.model_name + os.sep + str(args.fold))
+    if not os.path.exists(os.path.join(config.weights, config.model_name, str(args.fold))):
+        os.makedirs(os.path.join(config.weights, config.model_name, str(args.fold)))
     if not os.path.exists(config.best_models):
         os.mkdir(config.best_models)
 

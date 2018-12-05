@@ -9,12 +9,16 @@ class DefaultConfigs(object):
     train_csv = os.path.join(base_data_dir, 'train.csv')
     test_csv = os.path.join(base_data_dir, 'sample_submission.csv')
 
-    logs_dir = "./logs-f1"
+    loss_name = "f1"
+    # loss_name = "focal"
+    # loss_name = "ce"
+    logs_dir = "./logs-%s" % loss_name
     weights = os.path.join(logs_dir, 'checkpoints')
     best_models = os.path.join(weights, 'best_models')
     submit = os.path.join(logs_dir, 'submit')
     model_name = "bninception_bcelog"
     # model_name = "inceptionresnetv2"
+    gpu_id = "3"
 
     # basic config
     num_classes = 28
