@@ -21,6 +21,27 @@ def get_bninception():
         nn.Dropout(0.5),
         nn.Linear(1024, config.num_classes),
     )
+    if config.with_mse_loss:
+        model.reconstruct_layer = nn.Sequential(
+            nn.BatchNorm2d(1024),
+            nn.UpsamplingBilinear2d([int(config.img_height/16), int(config.img_width/16)]),
+            nn.Conv2d(1024, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.BatchNorm2d(64, affine=True),
+            nn.ReLU(),
+            nn.UpsamplingBilinear2d([int(config.img_height/8), int(config.img_width/8)]),
+            nn.Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.BatchNorm2d(64, affine=True),
+            nn.ReLU(),
+            nn.UpsamplingBilinear2d([int(config.img_height/4), int(config.img_width/4)]),
+            nn.Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.BatchNorm2d(64, affine=True),
+            nn.ReLU(),
+            nn.UpsamplingBilinear2d([int(config.img_height/2), int(config.img_width/2)]),
+            nn.Conv2d(64, config.channels, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.Sigmoid(),
+            nn.UpsamplingBilinear2d([config.img_height, config.img_width]),
+        )
+
     return model
 
 

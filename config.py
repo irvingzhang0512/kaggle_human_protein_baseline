@@ -9,20 +9,21 @@ class DefaultConfigs(object):
     train_csv = os.path.join(base_data_dir, 'train.csv')
     test_csv = os.path.join(base_data_dir, 'sample_submission.csv')
 
-    loss_name = "f1"
-    # loss_name = "focal"
+    # loss_name = "f1"
+    loss_name = "focal"
     # loss_name = "ce"
-    logs_dir = "./logs-%s" % loss_name
+    with_mse_loss = False
+    logs_dir = "./logs-mse-%s" % loss_name if with_mse_loss else "./logs-%s" % loss_name
     weights = os.path.join(logs_dir, 'checkpoints')
     best_models = os.path.join(weights, 'best_models')
     submit = os.path.join(logs_dir, 'submit')
     model_name = "bninception_bcelog"
     # model_name = "inceptionresnetv2"
-    gpu_id = "3"
+    gpu_id = "0"
 
     # basic config
     num_classes = 28
-    img_weight = 512
+    img_width = 512
     img_height = 512
     channels = 4
     val_percent = 0.13
@@ -37,6 +38,22 @@ class DefaultConfigs(object):
 
     # steps
     logging_every_n_steps = 10
+
+    # thresholds
+    # # 0.6717
+    # thresholds = 0.15
+    # # 0.6870
+    # thresholds = 0.2
+    # 0.7096
+    thresholds = 0.4
+    # # 0.6646
+    # thresholds = np.array([0.407, 0.441, 0.161, 0.145, 0.299, 0.129, 0.25, 0.414, 0.01, 0.028, 0.021, 0.125,
+    #                        0.113, 0.387, 0.602, 0.001, 0.137, 0.199, 0.176, 0.25, 0.095, 0.29, 0.159, 0.255,
+    #                        0.231, 0.363, 0.117, 0., ])
+    # # 0.7038
+    # thresholds = np.array([0.5, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.2, 0.2, 0.2, 0.4,
+    #                        0.4, 0.4, 0.4, 0.2, 0.4, 0.4, 0.4, 0.4, 0.2, 0.4, 0.4, 0.4,
+    #                        0.4, 0.4, 0.4, 0.2, ])
 
 
 config = DefaultConfigs()

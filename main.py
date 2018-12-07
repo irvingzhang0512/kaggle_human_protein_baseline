@@ -35,25 +35,6 @@ torch.backends.cudnn.benchmark = True
 warnings.filterwarnings('ignore')
 logging_pattern = '%s %5.1f %6.1f    |      %.3f  %.3f       |      %.3f  %.4f      |       %s  %s        | %s'
 
-# # 0.6717
-# thresholds = 0.15
-
-# # 0.6870
-# thresholds = 0.2
-
-# 0.7096
-thresholds = 0.4
-
-# # 0.6646
-# thresholds = np.array([0.407, 0.441, 0.161, 0.145, 0.299, 0.129, 0.25, 0.414, 0.01, 0.028, 0.021, 0.125,
-#                        0.113, 0.387, 0.602, 0.001, 0.137, 0.199, 0.176, 0.25, 0.095, 0.29, 0.159, 0.255,
-#                        0.231, 0.363, 0.117, 0., ])
-
-
-# # 0.7038
-# thresholds = np.array([0.5, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.2, 0.2, 0.2, 0.4,
-#                        0.4, 0.4, 0.4, 0.2, 0.4, 0.4, 0.4, 0.4, 0.2, 0.4, 0.4, 0.4,
-#                        0.4, 0.4, 0.4, 0.2, ])
 
 def train(train_loader, model, criterion, optimizer, epoch, valid_loss, best_results, start):
     losses = AverageMeter()
@@ -62,17 +43,24 @@ def train(train_loader, model, criterion, optimizer, epoch, valid_loss, best_res
     for i, (images, target) in enumerate(train_loader):
         images = images.cuda(non_blocking=True)
         target = torch.from_numpy(np.array(target)).float().cuda(non_blocking=True)
-        output = model(images)
-        loss = criterion(output, target)
+
+        classifier_output = model(images)
+        classifier_loss = criterion(classifier_output, target)
+
+        if config.with_mse_loss:
+            reconstruct_output = model.reconstruct_layer(model.features(images))
+            reconstruct_loss = nn.MSELoss().cuda()(reconstruct_output, images)
+            loss = classifier_loss + reconstruct_loss
+        else:
+            loss = classifier_loss
 
         losses.update(loss.item(), images.size(0))
-        f1.update(output.sigmoid().cpu() > thresholds, target)
+        f1.update(classifier_output.sigmoid().cpu() > config.thresholds, target)
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         if i % config.logging_every_n_steps == 0:
-            # print('\r', end='', flush=True)
             message = logging_pattern % (
                 "train", i / len(train_loader) + epoch, epoch,
                 losses.avg, f1.f1,
@@ -92,12 +80,21 @@ def evaluate(val_loader, model, criterion, epoch, train_loss, best_results, star
         for i, (images, target) in enumerate(val_loader):
             images_var = images.cuda(non_blocking=True)
             target = torch.from_numpy(np.array(target)).float().cuda(non_blocking=True)
-            output = model(images_var)
-            loss = criterion(output, target)
+
+            classifier_output = model(images_var)
+            classifier_loss = criterion(classifier_output, target)
+
+            if config.with_mse_loss:
+                reconstruct_output = model.reconstruct_layer(model.features(images_var))
+                reconstruct_loss = nn.MSELoss().cuda()(reconstruct_output, images_var)
+                loss = classifier_loss + reconstruct_loss
+            else:
+                loss = classifier_loss
+
             losses.update(loss.item(), images_var.size(0))
-            f1.update(output.sigmoid().cpu() > thresholds, target)
+            f1.update(classifier_output.sigmoid().cpu() > config.thresholds, target)
+
             if i % config.logging_every_n_steps == 0:
-                # print('\r', end='', flush=True)
                 message = logging_pattern % (
                     "val", i / len(val_loader) + epoch, epoch,
                     train_loss[0], train_loss[1],
@@ -119,11 +116,20 @@ def test(test_loader, model, folds):
             image_var = x.cuda(non_blocking=True)
             y_pred = model(image_var)
             cur_label = y_pred.sigmoid().cpu().data.numpy()
-            labels.append(cur_label > thresholds)
+            labels.append(cur_label > config.thresholds)
 
-    for row in np.concatenate(labels):
-        subrow = ' '.join(list([str(i) for i in np.nonzero(row)[0]]))
-        submissions.append(subrow)
+            for cur_row in cur_label:
+                res = np.nonzero(cur_row > config.thresholds)[0]
+                if len(res) == 0:
+                    # cur_submission = ''
+                    cur_submission = str(np.argmax(cur_row))
+                else:
+                    cur_submission = ' '.join(list([str(i) for i in res]))
+                submissions.append(cur_submission)
+
+    # for row in np.concatenate(labels):
+    #     subrow = ' '.join(list([str(i) for i in np.nonzero(row)[0]]))
+    #     submissions.append(subrow)
     sample_submission_df['Predicted'] = submissions
     sample_submission_df.to_csv(os.path.join(config.submit, '%s_bestloss_submission.csv' % config.model_name),
                                 index=None)
@@ -254,8 +260,8 @@ def evaluating(model, fold, args):
             images_var = images.cuda(non_blocking=True)
             target = torch.from_numpy(np.array(target)).float().cuda(non_blocking=True)
             output = model(images_var)
-            # f1.update(output.sigmoid().cpu() > thresholds, target)
-            f1.update(output.sigmoid().cpu() > torch.from_numpy(thresholds).float(), target)
+            f1.update(output.sigmoid().cpu() > config.thresholds, target)
+            # f1.update(output.sigmoid().cpu() > torch.from_numpy(config.thresholds).float(), target)
         print('final loss: %.4f\nfinal f1: %.4f\n' % (losses.avg, f1.f1))
 
 

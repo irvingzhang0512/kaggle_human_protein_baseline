@@ -62,7 +62,7 @@ class HumanDataset(Dataset):
         if config.img_height == 512:
             return images
         else:
-            return cv2.resize(images, (config.img_weight, config.img_height))
+            return cv2.resize(images, (config.img_width, config.img_height))
 
     def augumentor(self, image):
         augment_img = iaa.SomeOf((0, 6), [
