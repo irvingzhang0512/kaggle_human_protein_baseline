@@ -17,7 +17,7 @@ from models.model import get_net
 from torch import nn, optim
 from torch.utils.data import DataLoader
 from torch.optim import lr_scheduler
-from iterstrat.ml_stratifiers import MultilabelStratifiedShuffleSplit
+from iterstrat.ml_stratifiers import MultilabelStratifiedKFold
 from timeit import default_timer as timer
 
 # set random seed
@@ -39,6 +39,7 @@ logging_pattern = '%s %5.1f %6.1f    |      %.3f  %.3f       |      %.3f  %.4f  
 def train(train_loader, model, criterion, optimizer, epoch, valid_loss, best_results, start):
     losses = AverageMeter()
     f1 = F1Meter()
+    model.cuda()
     model.train()
     for i, (images, target) in enumerate(train_loader):
         images = images.cuda(non_blocking=True)
@@ -106,41 +107,36 @@ def evaluate(val_loader, model, criterion, epoch, train_loss, best_results, star
     return [losses.avg, f1.f1]
 
 
-def test(test_loader, model, folds):
-    sample_submission_df = pd.read_csv(config.test_csv)
-    submissions = []
-    model.cuda()
-    model.eval()
-    for i, (x, filepath) in enumerate(tqdm(test_loader)):
-        with torch.no_grad():
-            image_var = x.cuda(non_blocking=True)
-            y_pred = model(image_var)
-            cur_label = y_pred.sigmoid().cpu().data.numpy()
-
-            for cur_row in cur_label:
-                res = np.nonzero(cur_row > config.thresholds)[0]
-                if len(res) == 0:
-                    cur_submission = ''
-                    # cur_submission = str(np.argmax(cur_row))
-                else:
-                    cur_submission = ' '.join(list([str(i) for i in res]))
-                submissions.append(cur_submission)
-
-    sample_submission_df['Predicted'] = submissions
-    sample_submission_df.to_csv(os.path.join(config.submit, '%s_bestloss_submission.csv' % config.model_name),
-                                index=None)
-
-
-def training(model, fold, args):
-    # resore from last checkpoint
-    # all model weights resored, but not learning rate.
-    if os.path.exists(os.path.join(config.weights, config.model_name, str(fold), "checkpoint.pth.tar")):
-        best_model = torch.load(os.path.join(config.weights, config.model_name, str(fold), "checkpoint.pth.tar"))
-        model.load_state_dict(best_model["state_dict"])
-
-    # logging issues
+def ensemble_training(model, k_folds=5):
+    # 准备工作
     log = Logger()
     log.open(os.path.join(config.logs_dir, "%s_log_train.txt" % config.model_name), mode="a")
+
+    # load dataset
+    all_files = pd.read_csv(config.train_csv)
+
+    image_names = all_files['Id']
+    labels_strs = all_files['Target']
+    image_labels = []
+    for cur_label_str in labels_strs:
+        cur_label = np.eye(config.num_classes, dtype=np.float)[np.array(list(map(int, cur_label_str.split(' '))))].sum(
+            axis=0)
+        image_labels.append(cur_label)
+    image_labels = np.stack(image_labels, axis=0)
+
+    msss = MultilabelStratifiedKFold(n_splits=k_folds)
+    i = 0
+    for train_index, val_index in msss.split(image_names, image_labels):
+        train_image_names = image_names[train_index]
+        train_image_labels = image_labels[train_index]
+        val_image_names = image_names[val_index]
+        val_image_labels = image_labels[val_index]
+        i += 1
+        training(model, i, log, train_image_names, train_image_labels, val_image_names, val_image_labels)
+
+
+def training(model, fold, log, train_image_names, train_image_labels, val_image_names, val_image_labels):
+    # logging issues
     log.write(
         "\n---------------------------- [START %s] %s\n\n" % (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), '-' * 20))
 
@@ -173,25 +169,6 @@ def training(model, fold, args):
                                     step_size=config.learning_rate_decay_epochs,
                                     gamma=config.learning_rate_decay_rate)
     start = timer()
-
-    # load dataset
-    all_files = pd.read_csv(config.train_csv)
-
-    image_names = all_files['Id']
-    labels_strs = all_files['Target']
-    image_labels = []
-    for cur_label_str in labels_strs:
-        cur_label = np.eye(config.num_classes, dtype=np.float)[np.array(list(map(int, cur_label_str.split(' '))))].sum(axis=0)
-        image_labels.append(cur_label)
-    image_labels = np.stack(image_labels, axis=0)
-
-    msss = MultilabelStratifiedShuffleSplit(n_splits=1, test_size=config.val_percent, random_state=0)
-    for train_index, val_index in msss.split(image_names, image_labels):
-        train_image_names = image_names[train_index]
-        train_image_labels = image_labels[train_index]
-        val_image_names = image_names[val_index]
-        val_image_labels = image_labels[val_index]
-
 
     train_gen = HumanDataset(train_image_names, train_image_labels, config.train_dir, mode="train")
     train_loader = DataLoader(train_gen, batch_size=config.batch_size, shuffle=True, pin_memory=True, num_workers=4)
@@ -238,43 +215,53 @@ def training(model, fold, args):
         time.sleep(0.01)
 
 
-def testing(model, fold, args):
+def ensemble_testing(model, k_folds):
     print('start testing')
+    model.cuda()
+    model.eval()
+
     # load dataset
     test_files = pd.read_csv(config.test_csv)
     test_gen = HumanDataset(test_files['Id'], None, config.test_dir, augument=False, mode="test")
     test_loader = DataLoader(test_gen, 1, shuffle=False, pin_memory=True, num_workers=4)
 
-    # load model
-    best_model = torch.load(
-        "%s/%s_fold_%s_model_best_loss.pth.tar" % (config.best_models, config.model_name, str(fold)))
-    # best_model = torch.load("checkpoints/bninception_bcelog/0/checkpoint.pth.tar")
-    model.load_state_dict(best_model["state_dict"])
-    test(test_loader, model, fold)
+    # get sigmoids
+    predicted_sigmoids = None
+    for cur_fold in range(k_folds):
+        # load model
+        best_model = torch.load(
+            "%s/%s_fold_%s_model_best_loss.pth.tar" % (config.best_models, config.model_name, str(cur_fold)))
+        model.load_state_dict(best_model["state_dict"])
 
+        # cal sigmoids
+        cur_fold_sigmoids = []
+        for i, (x, filepath) in enumerate(tqdm(test_loader)):
+            with torch.no_grad():
+                image_var = x.cuda(non_blocking=True)
+                y_pred = model(image_var)
+                cur_label = y_pred.sigmoid().cpu().data.numpy()
+                cur_fold_sigmoids.append(cur_label)
+        cur_fold_sigmoids = np.stack(cur_fold_sigmoids)
 
-def evaluating(model, fold, args):
-    # load model
-    best_model = torch.load(
-        "%s/%s_fold_%s_model_best_loss.pth.tar" % (config.best_models, config.model_name, str(fold)))
-    model.load_state_dict(best_model["state_dict"])
+        # merge sigmoids
+        predicted_sigmoids = cur_fold_sigmoids if predicted_sigmoids is None \
+            else cur_fold_sigmoids + predicted_sigmoids
+    predicted_sigmoids = predicted_sigmoids / k_folds
 
-    all_files = pd.read_csv(config.train_csv)
-    all_gen = HumanDataset(all_files, config.train_dir, augument=False)
-    all_loader = DataLoader(all_gen, 1, shuffle=False, pin_memory=True, num_workers=4)
-
-    losses = AverageMeter()
-    f1 = F1Meter()
-    model.cuda()
-    model.eval()
-    with torch.no_grad():
-        for i, (images, target) in enumerate(tqdm(all_loader)):
-            images_var = images.cuda(non_blocking=True)
-            target = torch.from_numpy(np.array(target)).float().cuda(non_blocking=True)
-            output = model(images_var)
-            f1.update(output.sigmoid().cpu() > config.thresholds, target)
-            # f1.update(output.sigmoid().cpu() > torch.from_numpy(config.thresholds).float(), target)
-        print('final loss: %.4f\nfinal f1: %.4f\n' % (losses.avg, f1.f1))
+    # use thresholds and get csv
+    sample_submission_df = pd.read_csv(config.test_csv)
+    submissions = []
+    for cur_row in predicted_sigmoids:
+        cur_submission_list = np.nonzero(cur_row > config.thresholds)[0]
+        if len(cur_submission_list) == 0:
+            cur_submission_str = ''
+            # cur_submission = str(np.argmax(cur_row))
+        else:
+            cur_submission_str = ' '.join(list([str(i) for i in cur_submission_list]))
+        submissions.append(cur_submission_str)
+    sample_submission_df['Predicted'] = submissions
+    sample_submission_df.to_csv(os.path.join(config.submit, '%s_%d_folds_ensemble.csv' % (config.model_name, k_folds)),
+                                index=None)
 
 
 def main(args):
@@ -285,21 +272,20 @@ def main(args):
         os.mkdir(config.weights)
     if not os.path.exists(config.submit):
         os.makedirs(config.submit)
-    if not os.path.exists(os.path.join(config.weights, config.model_name, str(args.fold))):
-        os.makedirs(os.path.join(config.weights, config.model_name, str(args.fold)))
+    for cur_fold in range(args.k_folds):
+        if not os.path.exists(os.path.join(config.weights, config.model_name, str(cur_fold))):
+            os.makedirs(os.path.join(config.weights, config.model_name, str(cur_fold)))
     if not os.path.exists(config.best_models):
-        os.mkdir(config.best_models)
+        os.mkdir(os.path.join(config.best_models))
 
     # get model
     model = get_net()
     model.cuda()
 
     if args.mode == 'train':
-        training(model, args.fold, args)
+        ensemble_training(model, args.k_folds)
     elif args.mode == 'test':
-        testing(model, args.fold, args)
-    elif args.mode == 'evaluate':
-        evaluating(model, args.fold, args)
+        ensemble_testing(model, args.k_folds)
     else:
         raise ValueError('Unknown Mode {}'.format(args.mode))
 
@@ -309,7 +295,7 @@ def _parse_arguments(argv):
 
     # base configs
     parser.add_argument('--mode', type=str, default="train")
-    parser.add_argument('--fold', type=int, default=0)
+    parser.add_argument('--k_folds', type=int, default=5)
 
     return parser.parse_args(argv)
 
