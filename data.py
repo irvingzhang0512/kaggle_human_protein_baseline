@@ -3,7 +3,6 @@ from config import *
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms as T
-from sklearn.preprocessing import MultiLabelBinarizer
 from imgaug import augmenters as iaa
 import random
 import pathlib
@@ -16,35 +15,30 @@ torch.cuda.manual_seed_all(2050)
 
 
 class HumanDataset(Dataset):
-    def __init__(self, images_df, base_path, augument=True, mode="train"):
+    def __init__(self, file_names, labels, base_path, augument=True, mode="train"):
         if not isinstance(base_path, pathlib.Path):
             base_path = pathlib.Path(base_path)
-        self.images_df = images_df.copy()
+        self.file_names = [os.path.join(base_path, file_name) for file_name in file_names]
+        self.labels = labels
         self.augument = augument
-        self.images_df.Id = self.images_df.Id.apply(lambda x: base_path / x)
-        self.mlb = MultiLabelBinarizer(classes=np.arange(0, config.num_classes))
-        self.mlb.fit(np.arange(0, config.num_classes))
         self.mode = mode
 
     def __len__(self):
-        return len(self.images_df)
+        return len(self.file_names)
 
     def __getitem__(self, index):
         img = self.read_images(index)
         if not self.mode == "test":
-            labels = np.array(list(map(int, self.images_df.iloc[index].Target.split(' '))))
-            y = np.eye(config.num_classes, dtype=np.float)[labels].sum(axis=0)
+            y = self.labels[index]
         else:
-            y = str(self.images_df.iloc[index].Id.absolute())
+            y = self.file_names[index]
         if self.augument:
             img = self.augumentor(img)
         img = T.Compose([T.ToPILImage(), T.ToTensor()])(img)
         return img.float(), y
 
     def read_images(self, index):
-        row = self.images_df.iloc[index]
-        filename = str(row.Id.absolute())
-
+        filename = self.file_names[index]
         if config.channels == 4:
             images = np.zeros(shape=(512, 512, 4))
         else:

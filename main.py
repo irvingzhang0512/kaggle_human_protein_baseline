@@ -17,7 +17,7 @@ from models.model import get_net
 from torch import nn, optim
 from torch.utils.data import DataLoader
 from torch.optim import lr_scheduler
-from sklearn.model_selection import train_test_split
+from iterstrat.ml_stratifiers import MultilabelStratifiedShuffleSplit
 from timeit import default_timer as timer
 
 # set random seed
@@ -121,8 +121,8 @@ def test(test_loader, model, folds):
             for cur_row in cur_label:
                 res = np.nonzero(cur_row > config.thresholds)[0]
                 if len(res) == 0:
-                    # cur_submission = ''
-                    cur_submission = str(np.argmax(cur_row))
+                    cur_submission = ''
+                    # cur_submission = str(np.argmax(cur_row))
                 else:
                     cur_submission = ' '.join(list([str(i) for i in res]))
                 submissions.append(cur_submission)
@@ -180,10 +180,26 @@ def training(model, fold, args):
 
     # load dataset
     all_files = pd.read_csv(config.train_csv)
-    train_data_list, val_data_list = train_test_split(all_files, test_size=config.val_percent, random_state=2050)
-    train_gen = HumanDataset(train_data_list, config.train_dir, mode="train")
+
+    image_names = all_files['Id']
+    labels_strs = all_files['Target']
+    image_labels = []
+    for cur_label_str in labels_strs:
+        cur_label = np.eye(config.num_classes, dtype=np.float)[np.array(list(map(int, cur_label_str.split(' '))))].sum(axis=0)
+        image_labels.append(cur_label)
+    image_labels = np.stack(image_labels, axis=0)
+
+    msss = MultilabelStratifiedShuffleSplit(n_splits=1, test_size=config.val_percent, random_state=0)
+    for train_index, val_index in msss.split(image_names, image_labels):
+        train_image_names = image_names[train_index]
+        train_image_labels = image_labels[train_index]
+        val_image_names = image_names[val_index]
+        val_image_labels = image_labels[val_index]
+
+
+    train_gen = HumanDataset(train_image_names, train_image_labels, config.train_dir, mode="train")
     train_loader = DataLoader(train_gen, batch_size=config.batch_size, shuffle=True, pin_memory=True, num_workers=4)
-    val_gen = HumanDataset(val_data_list, config.train_dir, augument=False, mode="train")
+    val_gen = HumanDataset(val_image_names, val_image_labels, config.train_dir, augument=False, mode="train")
     val_loader = DataLoader(val_gen, batch_size=config.batch_size, shuffle=False, pin_memory=True, num_workers=4)
 
     # train
@@ -230,7 +246,7 @@ def testing(model, fold, args):
     print('start testing')
     # load dataset
     test_files = pd.read_csv(config.test_csv)
-    test_gen = HumanDataset(test_files, config.test_dir, augument=False, mode="test")
+    test_gen = HumanDataset(test_files['Id'], None, config.test_dir, augument=False, mode="test")
     test_loader = DataLoader(test_gen, 1, shuffle=False, pin_memory=True, num_workers=4)
 
     # load model
