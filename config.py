@@ -9,6 +9,9 @@ class DefaultConfigs(object):
     train_csv = os.path.join(base_data_dir, 'train.csv')
     test_csv = os.path.join(base_data_dir, 'sample_submission.csv')
 
+    with_leak_data = False
+    leak_data_path = '/ssd/zhangyiyang/protein/leak_data.csv'
+
     # loss_name = "f1"
     # loss_name = "focal"
     loss_name = "ce"

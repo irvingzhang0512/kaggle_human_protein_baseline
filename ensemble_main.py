@@ -265,8 +265,20 @@ def ensemble_testing(k_folds):
             cur_submission_str = ' '.join(list([str(i) for i in cur_submission_list]))
         submissions.append(cur_submission_str)
     sample_submission_df['Predicted'] = submissions
-    sample_submission_df.to_csv(os.path.join(config.submit, '%s_%d_folds_ensemble.csv' % (config.model_name, k_folds)),
-                                index=None)
+
+    file_path = os.path.join(config.submit, '%s_%d_folds_ensemble.csv' % (config.model_name, k_folds))
+    if config.with_leak_data:
+        leak_data_df = pd.read_csv(config.leak_data_path)
+        leak_data_df.drop(['Extra', 'SimR', 'SimG', 'SimB', 'Target_noisey'], axis=1, inplace=True)
+        leak_data_df.columns = ['Id', 'Leak']
+        leak_data_df = leak_data_df.set_index('Id')
+        df = sample_submission_df.set_index('Id')
+        for cur_index in leak_data_df.index:
+            if cur_index in df.index:
+                df.loc[cur_index].Predicted = leak_data_df.loc[cur_index].Leak
+        df.to_csv(file_path)
+    else:
+        sample_submission_df.to_csv(file_path, index=None)
 
 
 def main(args):
