@@ -107,7 +107,7 @@ def evaluate(val_loader, model, criterion, epoch, train_loss, best_results, star
     return [losses.avg, f1.f1]
 
 
-def ensemble_training(model, k_folds=5):
+def ensemble_training(k_folds=5):
     # 准备工作
     log = Logger()
     log.open(os.path.join(config.logs_dir, "%s_log_train.txt" % config.model_name), mode="a")
@@ -127,12 +127,14 @@ def ensemble_training(model, k_folds=5):
     msss = MultilabelStratifiedKFold(n_splits=k_folds)
     i = 0
     for train_index, val_index in msss.split(image_names, image_labels):
+        model = get_net()
+        model.cuda()
         train_image_names = image_names[train_index]
         train_image_labels = image_labels[train_index]
         val_image_names = image_names[val_index]
         val_image_labels = image_labels[val_index]
-        i += 1
         training(model, i, log, train_image_names, train_image_labels, val_image_names, val_image_labels)
+        i += 1
 
 
 def training(model, fold, log, train_image_names, train_image_labels, val_image_names, val_image_labels):
@@ -215,8 +217,9 @@ def training(model, fold, log, train_image_names, train_image_labels, val_image_
         time.sleep(0.01)
 
 
-def ensemble_testing(model, k_folds):
+def ensemble_testing(k_folds):
     print('start testing')
+    model = get_net()
     model.cuda()
     model.eval()
 
@@ -241,7 +244,8 @@ def ensemble_testing(model, k_folds):
                 y_pred = model(image_var)
                 cur_label = y_pred.sigmoid().cpu().data.numpy()
                 cur_fold_sigmoids.append(cur_label)
-        cur_fold_sigmoids = np.stack(cur_fold_sigmoids)
+                # print(cur_label.shape)
+        cur_fold_sigmoids = np.concatenate(cur_fold_sigmoids, axis=0)
 
         # merge sigmoids
         predicted_sigmoids = cur_fold_sigmoids if predicted_sigmoids is None \
@@ -253,6 +257,7 @@ def ensemble_testing(model, k_folds):
     submissions = []
     for cur_row in predicted_sigmoids:
         cur_submission_list = np.nonzero(cur_row > config.thresholds)[0]
+        # print(cur_submission_list, cur_row)
         if len(cur_submission_list) == 0:
             cur_submission_str = ''
             # cur_submission = str(np.argmax(cur_row))
@@ -278,14 +283,10 @@ def main(args):
     if not os.path.exists(config.best_models):
         os.mkdir(os.path.join(config.best_models))
 
-    # get model
-    model = get_net()
-    model.cuda()
-
     if args.mode == 'train':
-        ensemble_training(model, args.k_folds)
+        ensemble_training(args.k_folds)
     elif args.mode == 'test':
-        ensemble_testing(model, args.k_folds)
+        ensemble_testing(args.k_folds)
     else:
         raise ValueError('Unknown Mode {}'.format(args.mode))
 

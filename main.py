@@ -192,7 +192,6 @@ def training(model, fold, args):
         val_image_names = image_names[val_index]
         val_image_labels = image_labels[val_index]
 
-
     train_gen = HumanDataset(train_image_names, train_image_labels, config.train_dir, mode="train")
     train_loader = DataLoader(train_gen, batch_size=config.batch_size, shuffle=True, pin_memory=True, num_workers=4)
     val_gen = HumanDataset(val_image_names, val_image_labels, config.train_dir, augument=False, mode="train")
