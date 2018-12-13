@@ -42,19 +42,21 @@ def train(train_loader, model, criterion, optimizer, epoch, valid_loss, best_res
     model.train()
     for i, (images, target) in enumerate(train_loader):
         images = images.cuda(non_blocking=True)
+        in_images = images[:, :config.in_channels, :, :]
         target = torch.from_numpy(np.array(target)).float().cuda(non_blocking=True)
 
-        classifier_output = model(images)
+        classifier_output = model(in_images)
         classifier_loss = criterion(classifier_output, target)
 
         if config.with_mse_loss:
-            reconstruct_output = model.reconstruct_layer(model.features(images))
-            reconstruct_loss = nn.MSELoss().cuda()(reconstruct_output, images)
+            out_images = images[:, -config.out_channels:, :, :]
+            reconstruct_output = model.reconstruct_layer(model.features(in_images))
+            reconstruct_loss = nn.MSELoss().cuda()(reconstruct_output, out_images)
             loss = classifier_loss + reconstruct_loss
         else:
             loss = classifier_loss
 
-        losses.update(loss.item(), images.size(0))
+        losses.update(loss.item(), in_images.size(0))
         f1.update(classifier_output.sigmoid().cpu() > config.thresholds, target)
 
         optimizer.zero_grad()
@@ -79,14 +81,16 @@ def evaluate(val_loader, model, criterion, epoch, train_loss, best_results, star
     with torch.no_grad():
         for i, (images, target) in enumerate(val_loader):
             images_var = images.cuda(non_blocking=True)
+            in_images = images_var[:, :config.in_channels, :, :]
             target = torch.from_numpy(np.array(target)).float().cuda(non_blocking=True)
 
-            classifier_output = model(images_var)
+            classifier_output = model(in_images)
             classifier_loss = criterion(classifier_output, target)
 
             if config.with_mse_loss:
-                reconstruct_output = model.reconstruct_layer(model.features(images_var))
-                reconstruct_loss = nn.MSELoss().cuda()(reconstruct_output, images_var)
+                out_images = images_var[:, -config.out_channels:, :, :]
+                reconstruct_output = model.reconstruct_layer(model.features(in_images))
+                reconstruct_loss = nn.MSELoss().cuda()(reconstruct_output, out_images)
                 loss = classifier_loss + reconstruct_loss
             else:
                 loss = classifier_loss
@@ -114,7 +118,8 @@ def test(test_loader, model, folds):
     for i, (x, filepath) in enumerate(tqdm(test_loader)):
         with torch.no_grad():
             image_var = x.cuda(non_blocking=True)
-            y_pred = model(image_var)
+            in_images = image_var[:, :config.in_channels, :, :]
+            y_pred = model(in_images)
             cur_label = y_pred.sigmoid().cpu().data.numpy()
 
             for cur_row in cur_label:

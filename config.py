@@ -20,15 +20,16 @@ class DefaultConfigs(object):
     weights = os.path.join(logs_dir, 'checkpoints')
     best_models = os.path.join(weights, 'best_models')
     submit = os.path.join(logs_dir, 'submit')
-    # model_name = "bninception_bcelog"
-    model_name = "inceptionresnetv2"
+    model_name = "bninception_bcelog"
+    # model_name = "inceptionresnetv2"
     gpu_id = "0"
 
     # basic config
     num_classes = 28
     img_width = 512
     img_height = 512
-    channels = 4
+    in_channels = 3
+    out_channels = 1
     val_percent = 0.125
     batch_size = 25
     epochs = 40

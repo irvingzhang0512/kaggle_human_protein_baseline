@@ -39,19 +39,15 @@ class HumanDataset(Dataset):
 
     def read_images(self, index):
         filename = self.file_names[index]
-        if config.channels == 4:
-            images = np.zeros(shape=(512, 512, 4))
-        else:
-            images = np.zeros(shape=(512, 512, 3))
+        images = np.zeros(shape=(512, 512, 4))
         r = np.array(Image.open(filename + "_red.png"))
         g = np.array(Image.open(filename + "_green.png"))
         b = np.array(Image.open(filename + "_blue.png"))
         images[:, :, 0] = r.astype(np.uint8)
         images[:, :, 1] = g.astype(np.uint8)
         images[:, :, 2] = b.astype(np.uint8)
-        if config.channels == 4:
-            y = np.array(Image.open(filename + "_yellow.png"))
-            images[:, :, 3] = y.astype(np.uint8)
+        y = np.array(Image.open(filename + "_yellow.png"))
+        images[:, :, 3] = y.astype(np.uint8)
         images = images.astype(np.uint8)  # [0, 255]
         if config.img_height == 512:
             return images

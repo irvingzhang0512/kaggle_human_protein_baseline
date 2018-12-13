@@ -15,7 +15,7 @@ def get_net():
 def get_bninception():
     model = bninception(pretrained="imagenet")
     model.global_pool = nn.AdaptiveAvgPool2d(1)
-    model.conv1_7x7_s2 = nn.Conv2d(config.channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3))
+    model.conv1_7x7_s2 = nn.Conv2d(config.in_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3))
     model.last_linear = nn.Sequential(
         nn.BatchNorm1d(1024),
         nn.Dropout(0.5),
@@ -25,21 +25,24 @@ def get_bninception():
         model.reconstruct_layer = nn.Sequential(
             nn.BatchNorm2d(1024),
             nn.UpsamplingBilinear2d([int(config.img_height/16), int(config.img_width/16)]),
-            nn.Conv2d(1024, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
-            nn.BatchNorm2d(64, affine=True),
+            nn.Conv2d(1024, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.BatchNorm2d(32, affine=True),
             nn.ReLU(),
             nn.UpsamplingBilinear2d([int(config.img_height/8), int(config.img_width/8)]),
-            nn.Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
-            nn.BatchNorm2d(64, affine=True),
+            nn.Conv2d(32, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.BatchNorm2d(32, affine=True),
             nn.ReLU(),
             nn.UpsamplingBilinear2d([int(config.img_height/4), int(config.img_width/4)]),
-            nn.Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
-            nn.BatchNorm2d(64, affine=True),
+            nn.Conv2d(32, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.BatchNorm2d(32, affine=True),
             nn.ReLU(),
             nn.UpsamplingBilinear2d([int(config.img_height/2), int(config.img_width/2)]),
-            nn.Conv2d(64, config.channels, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
-            nn.Sigmoid(),
+            nn.Conv2d(32, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.BatchNorm2d(32, affine=True),
+            nn.ReLU(),
             nn.UpsamplingBilinear2d([config.img_height, config.img_width]),
+            nn.Conv2d(32, config.out_channels, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.Sigmoid(),
         )
 
     return model
@@ -66,11 +69,35 @@ def get_inception_resnet_v2():
             return x
 
     model = inceptionresnetv2(pretrained="imagenet")
-    model.conv2d_1a = BasicConv2d(config.channels, 32, kernel_size=3, stride=2)
+    model.conv2d_1a = BasicConv2d(config.in_channels, 32, kernel_size=3, stride=2)
     model.avgpool_1a = nn.AdaptiveAvgPool2d(1)
     model.last_linear = nn.Sequential(
         nn.BatchNorm1d(1536),
         nn.Dropout(0.5),
         nn.Linear(1536, config.num_classes),
     )
+
+    if config.with_mse_loss:
+        model.reconstruct_layer = nn.Sequential(
+            nn.BatchNorm2d(1536),
+            nn.UpsamplingBilinear2d([int(config.img_height/16), int(config.img_width/16)]),
+            nn.Conv2d(1536, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.BatchNorm2d(32, affine=True),
+            nn.ReLU(),
+            nn.UpsamplingBilinear2d([int(config.img_height/8), int(config.img_width/8)]),
+            nn.Conv2d(32, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.BatchNorm2d(32, affine=True),
+            nn.ReLU(),
+            nn.UpsamplingBilinear2d([int(config.img_height/4), int(config.img_width/4)]),
+            nn.Conv2d(32, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.BatchNorm2d(32, affine=True),
+            nn.ReLU(),
+            nn.UpsamplingBilinear2d([int(config.img_height/2), int(config.img_width/2)]),
+            nn.Conv2d(32, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.BatchNorm2d(32, affine=True),
+            nn.ReLU(),
+            nn.UpsamplingBilinear2d([config.img_height, config.img_width]),
+            nn.Conv2d(32, config.out_channels, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.Sigmoid(),
+        )
     return model
