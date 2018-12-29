@@ -9,13 +9,13 @@ import sys
 import argparse
 
 from config import config
-from utils import save_checkpoint, AverageMeter, Logger, FocalLoss, get_learning_rate, time_to_str, F1Meter, F1Loss
+from utils import save_checkpoint, AverageMeter, Logger, FocalLoss, get_learning_rate, time_to_str, F1Meter, F1Loss, get_sample_weights
 from data import HumanDataset
 from tqdm import tqdm
 from datetime import datetime
 from models.model import get_net
 from torch import nn, optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch.optim import lr_scheduler
 from iterstrat.ml_stratifiers import MultilabelStratifiedShuffleSplit
 from timeit import default_timer as timer
@@ -209,7 +209,9 @@ def training(model, fold, args):
         val_image_labels = image_labels[val_index]
 
     train_gen = HumanDataset(train_image_names, train_image_labels, config.train_dir, mode="train")
-    train_loader = DataLoader(train_gen, batch_size=config.batch_size, shuffle=True, pin_memory=True, num_workers=4)
+    sampler = WeightedRandomSampler(weights=get_sample_weights()[train_index], num_samples=int(len(all_files)*(1-config.val_percent)))
+    train_loader = DataLoader(train_gen, batch_size=config.batch_size, pin_memory=True, num_workers=4, sampler=sampler)
+    # train_loader = DataLoader(train_gen, batch_size=config.batch_size, shuffle=True, pin_memory=True, num_workers=4)
     val_gen = HumanDataset(val_image_names, val_image_labels, config.train_dir, augument=False, mode="train")
     val_loader = DataLoader(val_gen, batch_size=config.batch_size, shuffle=False, pin_memory=True, num_workers=4)
 
